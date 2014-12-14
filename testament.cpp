@@ -44,15 +44,16 @@ typedef struct {          // Object構造体
 } Object;
 
 #define NO_WEIGHT 0.0001  // 重量なしの場合の値
-#define WORDL_OFFSET 0.2  // オフセット
+#define WORLD_OFFSET 0.2  // オフセット
 #define ARM_NUM 4         // アームのパーツ点数
 #define MOTOR_NUM 3       // モータケース点数
 #define LINK_NUM 7        // リンクを構成するすべてのパーツ点数（1+3+3）
-#define BASE_NUM 4        // ベースを形成する要素
+#define BASE_NUM 3        // ベースを形成する要素
 
 static Object arm[ARM_NUM];
 static Object motor[MOTOR_NUM];
 static Object link[LINK_NUM];
+static Object base[BASE_NUM];
 static Object ball;
 
 static void generateObject(Object* obj, const char* type) {
@@ -259,10 +260,10 @@ static void createArm() {
     { 0.00, 0.00, 1.00 }, { 0.00, 1.00, 0.00 }, { 0.00, 1.00, 0.00 }, { 0.00, 0.00, 1.00 } };
   for(int i=0; i<ARM_NUM; i++){
     setParamCylinder(&arm[i], m, l, 3, r);
-    setParamCenter(&arm[i], cx[i][0], cx[i][1], cx[i][2]+WORDL_OFFSET);
+    setParamCenter(&arm[i], cx[i][0], cx[i][1], cx[i][2]+WORLD_OFFSET);
     setParamAxis(&arm[i], ax[i][0], ax[i][1], ax[i][2], ax[i][3]);
     setParamColor(&arm[i], color[i][0], color[i][1], color[i][2], color[i][3]);
-    setParamJointCenter(&arm[i], jcx[i][0], jcx[i][1], jcx[i][2]+WORDL_OFFSET);
+    setParamJointCenter(&arm[i], jcx[i][0], jcx[i][1], jcx[i][2]+WORLD_OFFSET);
     setParamJointHingeAxis(&arm[i], jax[i][0], jax[i][1], jax[i][2]);
     generateObject(&arm[i], "Cylinder");
     if(i==0){
@@ -290,10 +291,10 @@ static void createMotor() {
     { 0.00, 0.00, 1.00 }, { 0.00, 0.00, 1.00 }, { 0.00, 0.00, 1.00 } };
   for(int i=0; i<MOTOR_NUM; i++){
     setParamBox(&motor[i], m, size[0], size[1], size[2]);
-    setParamCenter(&motor[i], cx[i][0], cx[i][1], cx[i][2]+WORDL_OFFSET);
+    setParamCenter(&motor[i], cx[i][0], cx[i][1], cx[i][2]+WORLD_OFFSET);
     setParamAxis(&motor[i], ax[i][0], ax[i][1], ax[i][2], ax[i][3]);
     setParamColor(&motor[i], color[i][0], color[i][1], color[i][2], color[i][3]);
-    setParamJointCenter(&motor[i], jcx[i][0], jcx[i][1], jcx[i][2]+WORDL_OFFSET);
+    setParamJointCenter(&motor[i], jcx[i][0], jcx[i][1], jcx[i][2]+WORLD_OFFSET);
     setParamJointHingeAxis(&motor[i], jax[i][0], jax[i][1], jax[i][2]);
     generateObject(&motor[i], "Box");
     if(i==0){
@@ -325,10 +326,10 @@ static void createLink() {
     { 0.0, 0.0, 1.0 }, { 0.0, 0.0, 1.0 }, { 0.0, 0.0, 1.0 }  };
   for(int i=0; i<LINK_NUM; i++){
     setParamBox(&link[i], m, size[i][0], size[i][1], size[i][2]);
-    setParamCenter(&link[i], cx[i][0], cx[i][1], cx[i][2]+WORDL_OFFSET);
+    setParamCenter(&link[i], cx[i][0], cx[i][1], cx[i][2]+WORLD_OFFSET);
     setParamAxis(&link[i], ax[i][0], ax[i][1], ax[i][2], ax[i][3]);
     setParamColor(&link[i], color[0], color[1], color[2], color[3]);   // colorはリンクで共通化するため色分けなし
-    setParamJointCenter(&link[i], jcx[i][0], jcx[i][1], jcx[i][2]+WORDL_OFFSET);
+    setParamJointCenter(&link[i], jcx[i][0], jcx[i][1], jcx[i][2]+WORLD_OFFSET);
     setParamJointHingeAxis(&link[i], jax[i][0], jax[i][1], jax[i][2]);
     generateObject(&link[i], "Box");
     generateFixJoint(&link[i], &arm[belong[i]]);
@@ -336,28 +337,24 @@ static void createLink() {
 }
 
 static void createBase() {
-  dReal m = 0.0546;
-  dReal size[3] = { 0.024, 0.032, 0.050 };   // D: 0.024 W: 0.032 H: 0.050
-  dReal cx[MOTOR_NUM][3] = {
-    { 0.00, 0.014, 0.02 }, { 0.00, 0.00, 0.07 }, { 0.00, 0.00, 0.137 } };
-  dReal ax[MOTOR_NUM][4] = {
-    { 1.0, 0.0, 0.0, -M_PI/2.0 }, { 1.0, 0.0, 0.0, 0.0 }, { 1.0, 0.0, 0.0, 0.0 } };
-  dReal color[MOTOR_NUM][4] = {
-    { 0.20, 0.20, 0.20, 1.0 }, { 0.20, 0.20, 0.20, 1.0 }, { 0.20, 0.20, 0.20, 1.0 } };
-  dReal jcx[MOTOR_NUM][3] =  {
-    { 0.00, 0.014, 0.02 }, { 0.00, 0.00, 0.07 }, { 0.00, 0.00, 0.137 } };
-  dReal jax[MOTOR_NUM][3] =  {
-    { 0.00, 0.00, 1.00 }, { 0.00, 0.00, 1.00 }, { 0.00, 0.00, 1.00 } };
-  for(int i=0; i<MOTOR_NUM; i++){
-    setParamBox(&motor[i], m, size[0], size[1], size[2]);
-    setParamCenter(&motor[i], cx[i][0], cx[i][1], cx[i][2]+WORDL_OFFSET);
-    setParamAxis(&motor[i], ax[i][0], ax[i][1], ax[i][2], ax[i][3]);
-    setParamColor(&motor[i], color[i][0], color[i][1], color[i][2], color[i][3]);
-    setParamJointCenter(&motor[i], jcx[i][0], jcx[i][1], jcx[i][2]+WORDL_OFFSET);
-    setParamJointHingeAxis(&motor[i], jax[i][0], jax[i][1], jax[i][2]);
-    generateObject(&motor[i], "Box");
-    generateFixJoint(&motor[i], 0);
-    generateFixJoint(&motor[i], &arm[i-1]);
+  dReal m = NO_WEIGHT;
+  dReal size[BASE_NUM][3] = {
+    { 0.08, 0.16, 0.008 }, { 0.07, 0.12, 0.004 }, { 0.008, 0.008, 0.004 } };
+  dReal cx[BASE_NUM][3] = {
+    { 0.07, 0.0, 0.008 }, { 0.07, 0.0, 0.011 }, { 0.07, 0.07, 0.011 } };
+  dReal ax[BASE_NUM][4] = {
+    { 1.0, 0.0, 0.0, 0.0 }, { 1.0, 0.0, 0.0, 0.0 }, { 0.0, 0.0, 1.0, M_PI/4.0 }};
+  dReal color[BASE_NUM][4] = {
+    { 0.10, 0.10, 0.10, 1.0 }, { 0.0, 0.0, 0.0, 1.0 }, { 0.20, 0.20, 0.20, 1.0 } };
+  for(int i=0; i<BASE_NUM; i++){
+    setParamBox(&base[i], m, size[i][0], size[i][1], size[i][2]);
+    setParamCenter(&base[i], cx[i][0], cx[i][1], cx[i][2]+WORLD_OFFSET);
+    setParamAxis(&base[i], ax[i][0], ax[i][1], ax[i][2], ax[i][3]);
+    setParamColor(&base[i], color[i][0], color[i][1], color[i][2], color[i][3]);
+    setParamJointCenter(&base[i], 0.0, 0.0, 0.0 + WORLD_OFFSET);
+    setParamJointHingeAxis(&base[i], 0.0, 0.0, 0.0);
+    generateObject(&base[i], "Box");
+    generateFixJoint(&base[i], 0);
   }
 }
 
@@ -370,10 +367,10 @@ static void createBall() {
   dReal jcx[3] =  { 0.0, 0.0, 0.219 };
   dReal jax[3] =  { 0.00, 0.00, 1.0 };
   setParamSphere(&ball, m, r);
-  setParamCenter(&ball, cx[0], cx[1], cx[2]+WORDL_OFFSET);
+  setParamCenter(&ball, cx[0], cx[1], cx[2]+WORLD_OFFSET);
   setParamAxis(&ball, ax[0], ax[1], ax[2], ax[3]);
   setParamColor(&ball, color[0], color[1], color[2], color[3]);
-  setParamJointCenter(&ball, jcx[0], jcx[1], jcx[2]+WORDL_OFFSET);
+  setParamJointCenter(&ball, jcx[0], jcx[1], jcx[2]+WORLD_OFFSET);
   setParamJointHingeAxis(&ball, jax[0], jax[1], jax[2]);
   generateObject(&ball, "Sphere");
   generateFixJoint(&ball, 0);
@@ -403,6 +400,9 @@ static void draw() {
     drawObject(&link[i], "Box");
   }
   drawObject(&ball, "Sphere");
+  for(int i=0; i<BASE_NUM; i++) {
+    drawObject(&base[i], "Box");
+  }
 }
 
 // ロボット制御
