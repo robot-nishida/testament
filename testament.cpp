@@ -45,9 +45,15 @@ typedef struct {          // Object構造体
 
 #define NO_WEIGHT 0.0001  // 重量なしの場合の値
 #define WORDL_OFFSET 0.2  // オフセット
-#define ARM_NUM   4       // アームのパーツ点数
+#define ARM_NUM 4         // アームのパーツ点数
+#define MOTOR_NUM 3       // モータケース点数
+#define LINK_NUM 7        // リンクを構成するすべてのパーツ点数（1+3+3）
+#define BASE_NUM 4        // ベースを形成する要素
 
 static Object arm[ARM_NUM];
+static Object motor[MOTOR_NUM];
+static Object link[LINK_NUM];
+static Object ball;
 
 static void generateObject(Object* obj, const char* type) {
   obj -> body = dBodyCreate(world);
@@ -269,20 +275,119 @@ static void createArm() {
   }
 }
 
-static void createCase() {
+static void createMotor() {
+  dReal m = 0.0546;
+  dReal size[3] = { 0.024, 0.032, 0.050 };   // D: 0.024 W: 0.032 H: 0.050
+  dReal cx[MOTOR_NUM][3] = {
+    { 0.00, 0.014, 0.02 }, { 0.00, 0.00, 0.07 }, { 0.00, 0.00, 0.137 } };
+  dReal ax[MOTOR_NUM][4] = {
+    { 1.0, 0.0, 0.0, -M_PI/2.0 }, { 1.0, 0.0, 0.0, 0.0 }, { 1.0, 0.0, 0.0, 0.0 } };
+  dReal color[MOTOR_NUM][4] = {
+    { 0.20, 0.20, 0.20, 1.0 }, { 0.20, 0.20, 0.20, 1.0 }, { 0.20, 0.20, 0.20, 1.0 } };
+  dReal jcx[MOTOR_NUM][3] =  {
+    { 0.00, 0.014, 0.02 }, { 0.00, 0.00, 0.07 }, { 0.00, 0.00, 0.137 } };
+  dReal jax[MOTOR_NUM][3] =  {
+    { 0.00, 0.00, 1.00 }, { 0.00, 0.00, 1.00 }, { 0.00, 0.00, 1.00 } };
+  for(int i=0; i<MOTOR_NUM; i++){
+    setParamBox(&motor[i], m, size[0], size[1], size[2]);
+    setParamCenter(&motor[i], cx[i][0], cx[i][1], cx[i][2]+WORDL_OFFSET);
+    setParamAxis(&motor[i], ax[i][0], ax[i][1], ax[i][2], ax[i][3]);
+    setParamColor(&motor[i], color[i][0], color[i][1], color[i][2], color[i][3]);
+    setParamJointCenter(&motor[i], jcx[i][0], jcx[i][1], jcx[i][2]+WORDL_OFFSET);
+    setParamJointHingeAxis(&motor[i], jax[i][0], jax[i][1], jax[i][2]);
+    generateObject(&motor[i], "Box");
+    if(i==0){
+      generateFixJoint(&motor[i], 0);
+    }else{
+      generateFixJoint(&motor[i], &arm[i-1]);
+    }
+  }
 }
 
 static void createLink() {
-
+  int belong[LINK_NUM] = { 0, 1, 1, 1, 2, 2, 2 };   // モータ軸に接続する
+  dReal m = 0.005;
+  dReal size[LINK_NUM][3] = {
+    { 0.024, 0.034, 0.005 }, { 0.024, 0.003, 0.028 }, { 0.024, 0.040, 0.005 }, { 0.024, 0.003, 0.028 },
+    { 0.024, 0.003, 0.028 }, { 0.024, 0.040, 0.005 }, { 0.024, 0.003, 0.028 }  };
+  dReal cx[LINK_NUM][3] = {
+    { 0.000, 0.00, 0.0425 }, { 0.00,-0.0215, 0.098 }, { 0.000, 0.00, 0.1095 }, { 0.00, 0.0215, 0.098 },
+    { 0.00,-0.0215, 0.165 }, { 0.000, 0.00, 0.1765 }, { 0.00, 0.0215, 0.165 }  };
+  dReal ax[LINK_NUM][4] = {
+    { 0.0, 0.0, 1.0, 0.0 }, { 0.0, 0.0, 1.0, 0.0 }, { 0.0, 0.0, 1.0, 0.0 }, { 0.0, 0.0, 1.0, 0.0 },
+    { 0.0, 0.0, 1.0, 0.0 }, { 0.0, 0.0, 1.0, 0.0 }, { 0.0, 0.0, 1.0, 0.0 }  };
+  dReal color[4] = { 0.80, 0.80, 0.80, 1.0 };
+  dReal jcx[LINK_NUM][3] = {
+    { 0.000, 0.00, 0.0425 }, { 0.00,-0.0215, 0.098 }, { 0.000, 0.00, 0.1095 }, { 0.00, 0.0215, 0.098 },
+    { 0.00,-0.0215, 0.165 }, { 0.000, 0.00, 0.1765 }, { 0.00, 0.0215, 0.165 }  };
+  dReal jax[LINK_NUM][3] =  {
+    { 0.0, 0.0, 1.0 }, { 0.0, 0.0, 1.0 }, { 0.0, 0.0, 1.0 }, { 0.0, 0.0, 1.0 },
+    { 0.0, 0.0, 1.0 }, { 0.0, 0.0, 1.0 }, { 0.0, 0.0, 1.0 }  };
+  for(int i=0; i<LINK_NUM; i++){
+    setParamBox(&link[i], m, size[i][0], size[i][1], size[i][2]);
+    setParamCenter(&link[i], cx[i][0], cx[i][1], cx[i][2]+WORDL_OFFSET);
+    setParamAxis(&link[i], ax[i][0], ax[i][1], ax[i][2], ax[i][3]);
+    setParamColor(&link[i], color[0], color[1], color[2], color[3]);   // colorはリンクで共通化するため色分けなし
+    setParamJointCenter(&link[i], jcx[i][0], jcx[i][1], jcx[i][2]+WORDL_OFFSET);
+    setParamJointHingeAxis(&link[i], jax[i][0], jax[i][1], jax[i][2]);
+    generateObject(&link[i], "Box");
+    generateFixJoint(&link[i], &arm[belong[i]]);
+  }
 }
 
 static void createBase() {
-
+  dReal m = 0.0546;
+  dReal size[3] = { 0.024, 0.032, 0.050 };   // D: 0.024 W: 0.032 H: 0.050
+  dReal cx[MOTOR_NUM][3] = {
+    { 0.00, 0.014, 0.02 }, { 0.00, 0.00, 0.07 }, { 0.00, 0.00, 0.137 } };
+  dReal ax[MOTOR_NUM][4] = {
+    { 1.0, 0.0, 0.0, -M_PI/2.0 }, { 1.0, 0.0, 0.0, 0.0 }, { 1.0, 0.0, 0.0, 0.0 } };
+  dReal color[MOTOR_NUM][4] = {
+    { 0.20, 0.20, 0.20, 1.0 }, { 0.20, 0.20, 0.20, 1.0 }, { 0.20, 0.20, 0.20, 1.0 } };
+  dReal jcx[MOTOR_NUM][3] =  {
+    { 0.00, 0.014, 0.02 }, { 0.00, 0.00, 0.07 }, { 0.00, 0.00, 0.137 } };
+  dReal jax[MOTOR_NUM][3] =  {
+    { 0.00, 0.00, 1.00 }, { 0.00, 0.00, 1.00 }, { 0.00, 0.00, 1.00 } };
+  for(int i=0; i<MOTOR_NUM; i++){
+    setParamBox(&motor[i], m, size[0], size[1], size[2]);
+    setParamCenter(&motor[i], cx[i][0], cx[i][1], cx[i][2]+WORDL_OFFSET);
+    setParamAxis(&motor[i], ax[i][0], ax[i][1], ax[i][2], ax[i][3]);
+    setParamColor(&motor[i], color[i][0], color[i][1], color[i][2], color[i][3]);
+    setParamJointCenter(&motor[i], jcx[i][0], jcx[i][1], jcx[i][2]+WORDL_OFFSET);
+    setParamJointHingeAxis(&motor[i], jax[i][0], jax[i][1], jax[i][2]);
+    generateObject(&motor[i], "Box");
+    generateFixJoint(&motor[i], 0);
+    generateFixJoint(&motor[i], &arm[i-1]);
+  }
 }
+
+static void createBall() {
+  dReal m = NO_WEIGHT;
+  dReal r = 0.011;
+  dReal cx[3] = { 0.0, 0.0, 0.219 };
+  dReal ax[4] = { 1.0, 0.0, 0.0, 0.0 };
+  dReal color[4] = { 0.0, 0.90, 0.0, 1.0 };
+  dReal jcx[3] =  { 0.0, 0.0, 0.219 };
+  dReal jax[3] =  { 0.00, 0.00, 1.0 };
+  setParamSphere(&ball, m, r);
+  setParamCenter(&ball, cx[0], cx[1], cx[2]+WORDL_OFFSET);
+  setParamAxis(&ball, ax[0], ax[1], ax[2], ax[3]);
+  setParamColor(&ball, color[0], color[1], color[2], color[3]);
+  setParamJointCenter(&ball, jcx[0], jcx[1], jcx[2]+WORDL_OFFSET);
+  setParamJointHingeAxis(&ball, jax[0], jax[1], jax[2]);
+  generateObject(&ball, "Sphere");
+  generateFixJoint(&ball, 0);
+}
+
+
 
 // ロボット構成
 static void create() {
   createArm();
+  createMotor();
+  createLink();
+  createBase();
+  createBall();
 }
 
 
@@ -291,6 +396,13 @@ static void draw() {
   for(int i=0; i<ARM_NUM; i++) {
     drawObject(&arm[i], "Cylinder");
   }
+  for(int i=0; i<MOTOR_NUM; i++) {
+    drawObject(&motor[i], "Box");
+  }
+  for(int i=0; i<LINK_NUM; i++) {
+    drawObject(&link[i], "Box");
+  }
+  drawObject(&ball, "Sphere");
 }
 
 // ロボット制御
@@ -325,7 +437,7 @@ static void setView(float x,float y,float z,float h,float p,float r) {
 }
 
 static void start() {
-  setView(0.1,0.1,0.2,-135.0,-10.0,0.0);
+  setView(0.3,0.3,0.3,-135.0,-10.0,0.0);
 }
 
 // 描画関数の設定
@@ -343,7 +455,7 @@ int main (int argc, char *argv[]) {
   world        = dWorldCreate();
   space        = dHashSpaceCreate(0);
 
-  dWorldSetGravity(world,10.0,10.0,-10.0);
+  dWorldSetGravity(world, 0.0, 0.0, -9.8);
   dWorldSetERP(world,1.0);          // ERPの設定
   dWorldSetCFM(world,0.0);          // CFMの設定
   ground = dCreatePlane(space,0,0,1,0);
