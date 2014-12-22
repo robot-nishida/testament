@@ -28,17 +28,18 @@ typedef struct {          // Object構造体
   dReal r = 0;
   dReal m = 0;
   dReal lx[3] = {};      // Boxの長さ(x,y,z)
-  int longDir = 3;        // 円柱長手方向
+  int longDir = 3;       // 円柱長手方向
   dReal color[4] = {};   // オブジェクトの色(r,g,b->0-1)
   dReal cx[3] = {};      // 中心座標
   dReal ax[4] = {};      // 中心座標での回転軸ベクトル+回転確度[rad]
   dReal jcx[3] = {};     // 関節中心
   dReal jax[3] = {};     // 関節回転軸ベクトル（Hinge）
   dReal ujax[2][3] = {}; // 関節回転軸ベクトル（Universal）
-  dReal q = 0.0;       // 関節角度
-  dReal qdot = 0.0;    // 関節角速度
-  dReal q_d = 0.0;     // 目標角度
-  dReal acc[3] = {};   // オブジェクトの加速度情報
+  dReal q = 0.0;         // 関節角度
+  dReal qdot = 0.0;      // 関節角速度
+  dReal q_d = 0.0;       // 目標角度
+  dReal q_sum = 0.0;     // PID制御のI項計算のための積和
+  dReal acc[3] = {};     // オブジェクトの加速度情報
   dReal fmax = 0.0;      // 出力上限[Nm]
   dReal output = 0.0;    // 出力（トルクの場合も、角速度の場合もある→DAの電圧値）
 } Object;
@@ -49,12 +50,21 @@ typedef struct {          // Object構造体
 #define MOTOR_NUM 3       // モータケース点数
 #define LINK_NUM 7        // リンクを構成するすべてのパーツ点数（1+3+3）
 #define BASE_NUM 3        // ベースを形成する要素
+#define JOINT_NUM 3       // 関節数
+
+#define MIN_ANGLE -2.0    // モータ最小角度
+#define MAX_ANGLE  2.0    // モータ最大角度
 
 static Object arm[ARM_NUM];
 static Object motor[MOTOR_NUM];
 static Object link[LINK_NUM];
 static Object base[BASE_NUM];
 static Object ball;
+dReal tar[3] = { 0.0, 0.0, 0.0 };
+dReal key_control[3] = { 0.0, 0.0, 0.0 };
+bool control_flg = false;
+
+const dReal *pos;
 
 static void generateObject(Object* obj, const char* type) {
   obj -> body = dBodyCreate(world);
@@ -373,7 +383,7 @@ static void createBall() {
   setParamJointCenter(&ball, jcx[0], jcx[1], jcx[2]+WORLD_OFFSET);
   setParamJointHingeAxis(&ball, jax[0], jax[1], jax[2]);
   generateObject(&ball, "Sphere");
-  generateFixJoint(&ball, 0);
+  generateFixJoint(&ball, &arm[ARM_NUM-1]);
 }
 
 
@@ -405,15 +415,152 @@ static void draw() {
   }
 }
 
+// モーターの安全装置
+int isSafeMotor(double angle, double min, double max){
+  if( (angle < min) || (max < angle) ){
+    return 0;
+  }
+  return 1;
+}
+
 // ロボット制御
 static void control() {
+
+  // 普通に逆運動学を解くほうが楽か？
+
+  dReal kp[JOINT_NUM] = { 100.00, 100.00, 100.00 };
+  dReal kv[JOINT_NUM] = { 1.00, 1.00, 0.50 };
+  dReal ki[JOINT_NUM] = { 0.10, 0.10, 0.10 };
+  dReal l[JOINT_NUM] = { 0.084, 0.067, 0.068 };
+
+  // 関節角度/角速度取得
+  for(int i=0; i<JOINT_NUM; i++) {
+    arm[i].q = dJointGetHingeAngle(arm[i].joint);
+    arm[i].qdot = dJointGetHingeAngleRate(arm[i].joint);
+  }
+  // 目標関節角度の設定
+  pos = dBodyGetPosition(ball.body);
+  if(!control_flg){
+    for(int i=0; i<3; i++){
+      arm[i].q_d = arm[i].q;
+    }
+  } else {
+    arm[0].q_d = atan2( tar[1], tar[0] );
+
+    arm[1].q_d = atan2( (pow(tar[0],2.0)+pow(tar[1],2.0)) , pow(tar[2],2.0) )
+        - acos(
+          ( pow(l[1],2.0) - pow(l[2],2.0) + pow(tar[0],2.0) + pow(tar[1],2.0) + pow(tar[2],2.0) ) /
+          ( 2.0 * l[1] * sqrt( pow(tar[0],2.0) + pow(tar[1],2.0) + pow(tar[2],2.0) ) )
+          );
+
+    arm[2].q_d = M_PI - acos(
+        ( pow(l[1],2.0) + pow(l[2],2.0) - pow(tar[0],2.0) - pow(tar[1],2.0) - pow(tar[2],2.0) ) / (2.0*l[1]*l[2])
+      );
+    //double test_num = ( pow(l[1],2.0) - pow(l[2],2.0) + pow(tar[0],2.0) + pow(tar[1],2.0) + pow(tar[2],2.0) ) / ( 2.0 * l[1] * sqrt( pow(tar[0],2.0) + pow(tar[1],2.0) + pow(tar[2],2.0) ) );
+    //double test_num = ( pow(l[1],2.0) + pow(l[2],2.0) - pow(tar[0],2.0) - pow(tar[1],2.0) - pow(tar[2],2.0) ) / (2.0*l[1]*l[2]);
+    //printf("%lf\n", test_num);
+  }
+
+  // キーボードコントロール
+  // for(int i=0; i<JOINT_NUM; i++){
+  //   arm[i].q_d = key_control[i];
+  // }
+  // PID制御
+  for(int i=0; i<JOINT_NUM; i++){
+    if(isSafeMotor(arm[i].q_d, MIN_ANGLE, MAX_ANGLE) && isSafeMotor(arm[i].q, MIN_ANGLE, MAX_ANGLE)){
+      arm[i].q_sum += arm[i].q_d - arm[i].q;
+      arm[i].output = kp[i] * (arm[i].q_d - arm[i].q) - kv[i] * arm[i].qdot + ki[i] * arm[i].q_sum;
+      //arm[i].output = 0.0;
+      arm[i].fmax = 1.5;
+      dJointSetHingeParam(arm[i].joint, dParamVel, arm[i].output);
+      dJointSetHingeParam(arm[i].joint, dParamFMax, arm[i].fmax);
+    }else{
+      printf("AngleError : %d\n", i);
+      dJointSetHingeParam(arm[i].joint, dParamVel, 0.0);
+      dJointSetHingeParam(arm[i].joint, dParamFMax, 100.0);
+    }
+  }
+
+
+// ヤコビ行列計算
+// dReal trans_jacobian[9] = { 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0 };
+// dReal l[JOINT_NUM] = { 0.084, 0.067, 0.068 };
+
+// trans_jacobian[0] = -1.0 * l[1] * sin(arm[0].q) * sin(arm[1].q) -1.0 * l[2] * sin(arm[0].q) * sin(arm[1].q + arm[2].q);
+// trans_jacobian[1] =        l[1] * cos(arm[0].q) * sin(arm[1].q)        l[2] * cos(arm[0].q) * sin(arm[1].q + arm[2].q);
+// trans_jacobian[2] =  0.0;
+// trans_jacobian[3] =        l[1] * cos(arm[0].q) * cos(arm[1].q)        l[2] * cos(arm[0].q) * cos(arm[1].q + arm[2].q);
+// trans_jacobian[4] =        l[1] * sin(arm[0].q) * cos(arm[1].q)        l[2] * sin(arm[0].q) * cos(arm[1].q + arm[2].q);
+// trans_jacobian[5] = -1.0 * l[1] * sin(arm[0].q) -1.0 * l[2] * sin(arm[1].q + arm[2].q);
+// trans_jacobian[6] =                                                    l[2] * cos(arm[0].q) * cos(arm[1].q + arm[2].q)
+// trans_jacobian[7] =                                                    l[2] * sin(arm[0].q) * cos(arm[1].q + arm[2].q)
+// trans_jacobian[8] =                                             -1.0 * l[2] * sin(arm[1].q + arm[2].q);
+
+
+
+// 出力トルク→微小角計算
+
+
+
+// トルクの出力
+
+
+
 
 }
 
 
+
+
 void command(int cmd) {
   switch(cmd){
+  case 'r':
+    for(int i=0; i<JOINT_NUM; i++){
+      key_control[i] = 0.0;
+    }
+    break;
+  case '1':
+    key_control[0] += 0.1 * M_PI;
+    break;
+  case '2':
+    key_control[0] -= 0.1 * M_PI;
+    break;
+  case '3':
+    key_control[1] += 0.1 * M_PI;
+    break;
+  case '4':
+    key_control[1] -= 0.1 * M_PI;
+    break;
+  case '5':
+    key_control[2] += 0.1 * M_PI;
+    break;
+  case '6':
+    key_control[2] -= 0.1 * M_PI;
+    break;
+  case '7':
+    tar[0] = 0.103447;
+    tar[1] = 0.033256;
+    tar[2] = 0.281352 - WORLD_OFFSET - 0.084 + 0.02;
+    break;
+  case '8':
+    printf("q_d 0: %lf\n", arm[0].q_d);
+    printf("q_d 1: %lf\n", arm[1].q_d);
+    printf("q_d 2: %lf\n", arm[2].q_d);
+    // printf("ball_x 0: %lf\n", pos[0]);
+    // printf("ball_y 1: %lf\n", pos[1]);
+    // printf("ball_z 2: %lf\n", pos[2]);
+    break;
+  case '9':
+    printf("tar 0: %lf\n", tar[0]);
+    printf("tar 1: %lf\n", tar[1]);
+    printf("tar 2: %lf\n", tar[2]);
+    break;
   case '0':
+    if(control_flg){
+      control_flg = false;
+    }else{
+      control_flg = true;
+    }
     break;
   default:
     break;
